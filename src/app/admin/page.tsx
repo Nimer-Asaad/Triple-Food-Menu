@@ -10,6 +10,7 @@ interface ImageData {
   publicId: string;
   createdAt: Date;
   order?: number;
+  type?: 'menu' | 'slideshow';
 }
 
 const SESSION_AUTH_KEY = 'adminAuthenticated';
@@ -38,7 +39,9 @@ function normalizeImages(images: ImageData[]): ImageData[] {
 }
 
 export default function AdminPage() {
-  const [images, setImages] = useState<ImageData[]>([]);
+  const [menuImages, setMenuImages] = useState<ImageData[]>([]);
+  const [slideshowImages, setSlideshowImages] = useState<ImageData[]>([]);
+  const [currentGalleryType, setCurrentGalleryType] = useState<'menu' | 'slideshow'>('menu');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -90,16 +93,15 @@ export default function AdminPage() {
     setNewPassword('');
     setConfirmPassword('');
     setPassword('');
-    setImages([]);
+    setMenuImages([]);
+    setSlideshowImages([]);
     setMessage({ type: 'error', text: 'Session expired. Please login again.' });
   }, [clearAdminSession]);
 
   const fetchGallery = useCallback(
-    async ({ silent = false, clearMessage = true }: { silent?: boolean; clearMessage?: boolean } = {}) => {
+    async ({ silent = false, clearMessage = true, type = 'menu' }: { silent?: boolean; clearMessage?: boolean; type?: 'menu' | 'slideshow' } = {}) => {
       try {
-        if (silent) {
-          setRefreshing(true);
-        } else {
+        if (!silent) {
           setLoading(true);
         }
 
@@ -108,14 +110,20 @@ export default function AdminPage() {
         }
 
         writeAdminActivity(true);
-        const response = await fetch('/api/gallery', { cache: 'no-store' });
+        const response = await fetch(`/api/gallery?type=${type}`, { cache: 'no-store' });
 
         if (!response.ok) {
           throw new Error('Unable to load images');
         }
 
         const data = await response.json();
-        setImages(normalizeImages((data.images ?? []) as ImageData[]));
+        const normalizedData = normalizeImages((data.images ?? []) as ImageData[]);
+        
+        if (type === 'slideshow') {
+          setSlideshowImages(normalizedData);
+        } else {
+          setMenuImages(normalizedData);
+        }
       } catch (error) {
         console.error('Failed to fetch images:', error);
         setMessage({
@@ -157,7 +165,8 @@ export default function AdminPage() {
     }
 
     writeAdminActivity(true);
-    void fetchGallery({ silent: true, clearMessage: false });
+    void fetchGallery({ silent: true, clearMessage: false, type: 'menu' });
+    void fetchGallery({ silent: true, clearMessage: false, type: 'slideshow' });
   }, [authChecked, fetchGallery, isAuthenticated, writeAdminActivity]);
 
   useEffect(() => {
@@ -230,7 +239,8 @@ export default function AdminPage() {
         type: 'success',
         text: 'Logged in successfully.',
       });
-      void fetchGallery({ silent: true, clearMessage: false });
+      void fetchGallery({ silent: true, clearMessage: false, type: 'menu' });
+      void fetchGallery({ silent: true, clearMessage: false, type: 'slideshow' });
     } catch (error) {
       setMessage({
         type: 'error',
@@ -244,7 +254,8 @@ export default function AdminPage() {
   const handleLogout = () => {
     clearAdminSession();
     setIsAuthenticated(false);
-    setImages([]);
+    setMenuImages([]);
+    setSlideshowImages([]);
     setMessage(null);
     setShowChangePassword(false);
     setCurrentPassword('');
@@ -252,9 +263,9 @@ export default function AdminPage() {
     setConfirmPassword('');
   };
 
-  const handleUploadSuccess = (galleryImages: ImageData[]) => {
+  const handleUploadSuccess = async () => {
     writeAdminActivity(true);
-    setImages(normalizeImages(galleryImages));
+    await fetchGallery({ type: currentGalleryType });
     setMessage({
       type: 'success',
       text: 'Image uploaded successfully.',
@@ -274,7 +285,7 @@ export default function AdminPage() {
       const response = await fetch('/api/gallery', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicId }),
+        body: JSON.stringify({ publicId, type: currentGalleryType }),
       });
 
       if (!response.ok) {
@@ -283,7 +294,12 @@ export default function AdminPage() {
       }
 
       const data = await response.json();
-      setImages(normalizeImages((data.images ?? []) as ImageData[]));
+      const normalized = normalizeImages((data.images ?? []) as ImageData[]);
+      if (currentGalleryType === 'slideshow') {
+        setSlideshowImages(normalized);
+      } else {
+        setMenuImages(normalized);
+      }
       setMessage({
         type: 'success',
         text: 'Image deleted successfully.',
@@ -305,21 +321,20 @@ export default function AdminPage() {
       setMessage(null);
       setReordering(publicId);
 
-      const currentImages = normalizeImages(images);
-      const fromIndex = currentImages.findIndex((image) => image.publicId === publicId);
+      const currentImages = currentGalleryType === 'slideshow' ? slideshowImages : menuImages;
+      const normalized = normalizeImages(currentImages);
+      const fromIndex = normalized.findIndex((image) => image.publicId === publicId);
 
       if (fromIndex === -1) {
         throw new Error('Image not found');
       }
 
       const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1;
-      if (toIndex < 0 || toIndex >= currentImages.length) {
+      if (toIndex < 0 || toIndex >= normalized.length) {
         return;
       }
 
-      console.log('move image', fromIndex, toIndex);
-
-      const reorderedImages = [...currentImages];
+      const reorderedImages = [...normalized];
       [reorderedImages[fromIndex], reorderedImages[toIndex]] = [
         reorderedImages[toIndex],
         reorderedImages[fromIndex],
@@ -330,9 +345,13 @@ export default function AdminPage() {
         order: index,
       }));
 
-      setImages(normalizedReordered);
+      if (currentGalleryType === 'slideshow') {
+        setSlideshowImages(normalizedReordered);
+      } else {
+        setMenuImages(normalizedReordered);
+      }
 
-      const response = await fetch('/api/gallery/reorder', {
+      const response = await fetch(`/api/gallery/reorder?type=${currentGalleryType}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -341,6 +360,7 @@ export default function AdminPage() {
             url: image.url,
             createdAt: new Date(image.createdAt).toISOString(),
             order: index,
+            type: currentGalleryType,
           })),
         }),
       });
@@ -351,15 +371,19 @@ export default function AdminPage() {
       }
 
       const data = await response.json();
-      console.log('reorder response', data);
-      setImages(normalizeImages((data.images ?? []) as ImageData[]));
+      const finalNormalized = normalizeImages((data.images ?? []) as ImageData[]);
+      if (currentGalleryType === 'slideshow') {
+        setSlideshowImages(finalNormalized);
+      } else {
+        setMenuImages(finalNormalized);
+      }
       setMessage({
         type: 'success',
         text: 'Image order updated.',
       });
     } catch (error) {
       console.error('Failed to reorder image:', error);
-      await fetchGallery();
+      await fetchGallery({ type: currentGalleryType });
       setMessage({
         type: 'error',
         text: error instanceof Error ? error.message : 'Failed to reorder image.',
@@ -406,7 +430,8 @@ export default function AdminPage() {
       setNewPassword('');
       setConfirmPassword('');
       setPassword('');
-      setImages([]);
+      setMenuImages([]);
+      setSlideshowImages([]);
       setMessage({
         type: 'success',
         text: 'Password changed successfully. Please login again.',
@@ -421,6 +446,7 @@ export default function AdminPage() {
     }
   };
 
+  const currentImages = currentGalleryType === 'slideshow' ? slideshowImages : menuImages;
   const actionsDisabled =
     loading || refreshing || uploading || deleting !== null || reordering !== null || changingPasswordLoading;
 
@@ -497,9 +523,9 @@ export default function AdminPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.35em] text-[#ffc729]">Triple Food Admin</p>
-              <h1 className="mt-2 text-3xl font-semibold text-[#fff4c8] sm:text-4xl">Manage menu images</h1>
+              <h1 className="mt-2 text-3xl font-semibold text-[#fff4c8] sm:text-4xl">Manage images</h1>
               <p className="mt-2 max-w-2xl text-sm text-[#cfc6a2]">
-                Upload, reorder, delete, and preview the restaurant gallery. Access is session-based, and password changes require re-login.
+                Upload, reorder, delete, and preview gallery images. Access is session-based.
               </p>
             </div>
 
@@ -512,7 +538,7 @@ export default function AdminPage() {
               </Link>
               <button
                 type="button"
-                onClick={() => void fetchGallery({ silent: true })}
+                onClick={() => void fetchGallery({ silent: true, type: currentGalleryType })}
                 disabled={refreshing}
                 className="rounded-full border border-[#ffc729]/35 bg-[#0f0f0f] px-4 py-2 text-sm font-medium text-[#ffe08a] transition hover:border-[#ffc729] hover:text-[#ffc729] disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -548,6 +574,42 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* Gallery Type Selector */}
+        <div className="mt-6 flex gap-2">
+          <button
+            onClick={() => setCurrentGalleryType('menu')}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              currentGalleryType === 'menu'
+                ? 'border border-[#ffc729] bg-[#ffc729] text-[#111111]'
+                : 'border border-[#ffc729]/35 bg-[#0f0f0f] text-[#ffe08a] hover:border-[#ffc729] hover:text-[#ffc729]'
+            }`}
+          >
+            Menu Images
+          </button>
+          <button
+            onClick={() => setCurrentGalleryType('slideshow')}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              currentGalleryType === 'slideshow'
+                ? 'border border-[#ffc729] bg-[#ffc729] text-[#111111]'
+                : 'border border-[#ffc729]/35 bg-[#0f0f0f] text-[#ffe08a] hover:border-[#ffc729] hover:text-[#ffc729]'
+            }`}
+          >
+            Slideshow Images
+          </button>
+        </div>
+
+        {message && (
+          <div
+            className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium ${
+              message.type === 'success'
+                ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                : 'border border-red-500/30 bg-red-500/10 text-red-200'
+            }`}
+          >
+            {message.text}
+          </div>
+        )}
+
         <div className="mt-6 grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="rounded-[2rem] border border-[#ffc729]/20 bg-[#121212] p-5 shadow-[0_14px_50px_rgba(0,0,0,0.35)] backdrop-blur">
             <div className="mb-4">
@@ -555,24 +617,27 @@ export default function AdminPage() {
               <p className="mt-1 text-sm text-[#cfc6a2]">Choose one image at a time.</p>
             </div>
             <ImageUpload
-              onUploadSuccess={(nextImages) => {
+              onUploadSuccess={() => {
                 setUploading(false);
-                handleUploadSuccess(nextImages);
+                void handleUploadSuccess();
               }}
               onUploadingChange={setUploading}
               disabled={actionsDisabled}
+              galleryType={currentGalleryType}
             />
             {uploading && (
-              <p className="mt-3 text-sm font-medium text-[#ffc729]">Uploading menu image...</p>
+              <p className="mt-3 text-sm font-medium text-[#ffc729]">Uploading image...</p>
             )}
           </aside>
 
           <section className="rounded-[2rem] border border-[#ffc729]/20 bg-[#121212] p-5 shadow-[0_14px_50px_rgba(0,0,0,0.35)] backdrop-blur sm:p-6">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-xl font-semibold text-[#fff4c8]">Current images</h2>
+                <h2 className="text-xl font-semibold text-[#fff4c8]">
+                  {currentGalleryType === 'slideshow' ? 'Slideshow' : 'Menu'} images
+                </h2>
                 <p className="mt-1 text-sm text-[#cfc6a2]">
-                  {loading ? 'Loading images...' : `${images.length} image${images.length === 1 ? '' : 's'} in the gallery`}
+                  {loading ? 'Loading images...' : `${currentImages.length} image${currentImages.length === 1 ? '' : 's'}`}
                 </p>
               </div>
               {(deleting || reordering) && (
@@ -584,12 +649,12 @@ export default function AdminPage() {
 
             {loading ? (
               <div className="flex min-h-[320px] items-center justify-center rounded-[1.5rem] border border-dashed border-[#ffc729]/25 bg-[#0f0f0f]">
-                <p className="text-sm uppercase tracking-[0.3em] text-[#ffc729]">Loading current images...</p>
+                <p className="text-sm uppercase tracking-[0.3em] text-[#ffc729]">Loading images...</p>
               </div>
             ) : (
               <div className="space-y-4">
                 <ImageGallery
-                  images={normalizeImages(images)}
+                  images={normalizeImages(currentImages)}
                   onDelete={handleDelete}
                   onMoveUp={(publicId) => void handleMove(publicId, 'up')}
                   onMoveDown={(publicId) => void handleMove(publicId, 'down')}

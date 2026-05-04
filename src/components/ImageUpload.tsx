@@ -13,9 +13,10 @@ interface ImageUploadProps {
   onUploadSuccess: (galleryImages: ImageData[]) => void;
   disabled?: boolean;
   onUploadingChange?: (uploading: boolean) => void;
+  galleryType?: 'menu' | 'slideshow';
 }
 
-export default function ImageUpload({ onUploadSuccess, disabled, onUploadingChange }: ImageUploadProps) {
+export default function ImageUpload({ onUploadSuccess, disabled, onUploadingChange, galleryType = 'menu' }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -52,6 +53,7 @@ export default function ImageUpload({ onUploadSuccess, disabled, onUploadingChan
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('type', galleryType);
 
       const uploadResponse = await fetch('/api/gallery', {
         method: 'POST',

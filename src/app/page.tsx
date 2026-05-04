@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import Link from 'next/link';
 import { MessageCircle } from 'lucide-react';
 import { Settings } from 'lucide-react';
@@ -17,6 +18,101 @@ type GalleryDocument = {
   images: GalleryImage[];
   updatedAt: string;
 };
+
+type FloatingFoodImage = {
+  src: string;
+  alt: string;
+  left: string;
+  size: string;
+  duration: string;
+  delay: string;
+  opacity: number;
+  blur: string;
+  drift: string;
+  rotation: string;
+  rotationEnd: string;
+};
+
+const FLOATING_FOOD_IMAGES: FloatingFoodImage[] = [
+  {
+    src: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=900&q=70',
+    alt: 'Pizza',
+    left: '4%',
+    size: '11rem',
+    duration: '24s',
+    delay: '-2s',
+    opacity: 0.28,
+    blur: 'blur-[6px]',
+    drift: '12px',
+    rotation: '-6deg',
+    rotationEnd: '4deg',
+  },
+  {
+    src: 'https://images.unsplash.com/photo-1561758033-d89a9ad46330?auto=format&fit=crop&w=900&q=70',
+    alt: 'Burger',
+    left: '18%',
+    size: '10rem',
+    duration: '28s',
+    delay: '-9s',
+    opacity: 0.24,
+    blur: 'blur-[7px]',
+    drift: '-14px',
+    rotation: '5deg',
+    rotationEnd: '-3deg',
+  },
+  {
+    src: 'https://images.unsplash.com/photo-1562967916-eb82221dfb93?auto=format&fit=crop&w=900&q=70',
+    alt: 'Fries',
+    left: '34%',
+    size: '9rem',
+    duration: '21s',
+    delay: '-6s',
+    opacity: 0.26,
+    blur: 'blur-[6px]',
+    drift: '10px',
+    rotation: '3deg',
+    rotationEnd: '-2deg',
+  },
+  {
+    src: 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?auto=format&fit=crop&w=900&q=70',
+    alt: 'Shawarma',
+    left: '52%',
+    size: '12rem',
+    duration: '30s',
+    delay: '-13s',
+    opacity: 0.22,
+    blur: 'blur-[7px]',
+    drift: '-10px',
+    rotation: '-4deg',
+    rotationEnd: '5deg',
+  },
+  {
+    src: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=900&q=70',
+    alt: 'Pasta',
+    left: '69%',
+    size: '10rem',
+    duration: '26s',
+    delay: '-5s',
+    opacity: 0.23,
+    blur: 'blur-[6px]',
+    drift: '13px',
+    rotation: '7deg',
+    rotationEnd: '-5deg',
+  },
+  {
+    src: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=900&q=70',
+    alt: 'Grilled food',
+    left: '84%',
+    size: '11rem',
+    duration: '23s',
+    delay: '-11s',
+    opacity: 0.25,
+    blur: 'blur-[7px]',
+    drift: '-12px',
+    rotation: '-8deg',
+    rotationEnd: '6deg',
+  },
+];
 
 export default function HomePage() {
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -55,19 +151,57 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-[#0f0f0f] text-[#f8f5ef]">
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,199,41,0.14),_transparent_40%),linear-gradient(180deg,_#121212_0%,_#0a0a0a_100%)]" />
+        <div className="food-waterfall pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,199,41,0.12),_transparent_38%),linear-gradient(180deg,_rgba(0,0,0,0.5)_0%,_rgba(0,0,0,0.78)_100%)]" />
+          <div className="absolute inset-0 bg-black/70" />
+          {FLOATING_FOOD_IMAGES.map((food, index) => (
+            <div
+              key={`${food.alt}-${index}`}
+              className="food-rain-item"
+              aria-hidden="true"
+              style={{
+                left: food.left,
+                width: food.size,
+                height: food.size,
+                opacity: food.opacity,
+                animationDuration: food.duration,
+                animationDelay: food.delay,
+                ['--food-drift' as never]: food.drift,
+                ['--food-rotation' as never]: food.rotation,
+                ['--food-rotation-end' as never]: food.rotationEnd,
+              } as CSSProperties}
+            >
+              <div
+                className="food-rain-inner"
+                style={{ animationDuration: food.duration, animationDelay: food.delay } as CSSProperties}
+              >
+                <img
+                  src={food.src}
+                  alt={food.alt}
+                  loading="lazy"
+                  className={`h-full w-full object-cover ${food.blur} saturate-150 brightness-75`}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
         <div className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-          <header className="mb-8 rounded-3xl border border-[#ffc729]/30 bg-[#151515]/95 p-5 shadow-[0_20px_80px_rgba(0,0,0,0.5)] sm:p-7">
+          <header className="hero-shell mb-8 rounded-3xl border border-[#ffc729]/30 bg-[#151515]/92 p-5 shadow-[0_20px_80px_rgba(0,0,0,0.5)] sm:p-7">
             <div className="flex flex-col items-center gap-4 text-center">
               <p className="text-xs uppercase tracking-[0.4em] text-[#ffc729]">Restaurant Menu</p>
-              <h1 className="text-4xl font-bold tracking-wide text-[#fff4c8] sm:text-5xl">Triple Food</h1>
-              <div className="flex items-center gap-3">
+              <h1 className="hero-title text-4xl font-bold tracking-wide text-[#fff4c8] sm:text-5xl">
+                Triple Food
+              </h1>
+              <p className="hero-subtitle max-w-2xl text-sm leading-6 text-[#d8cfaa] sm:text-base">
+                Freshly made, flame-grilled, and served with a premium restaurant experience.
+              </p>
+              <div className="hero-icons flex items-center gap-3">
                 <a
                   href="https://www.instagram.com/triplefood.res?igsh=aGhzN2Q3N201bG8w"
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Instagram"
-                  className="rounded-full border border-[#ffc729]/60 bg-[#1d1d1d] p-3 text-[#ffc729] transition hover:bg-[#262626]"
+                  className="icon-bubble rounded-full border border-[#ffc729]/60 bg-[#1d1d1d] p-3 text-[#ffc729] transition hover:bg-[#262626]"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="currentColor">
                     <path d="M7.5 2h9A5.5 5.5 0 0 1 22 7.5v9a5.5 5.5 0 0 1-5.5 5.5h-9A5.5 5.5 0 0 1 2 16.5v-9A5.5 5.5 0 0 1 7.5 2Zm0 2A3.5 3.5 0 0 0 4 7.5v9A3.5 3.5 0 0 0 7.5 20h9a3.5 3.5 0 0 0 3.5-3.5v-9A3.5 3.5 0 0 0 16.5 4h-9Z"/>
@@ -80,7 +214,7 @@ export default function HomePage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Facebook"
-                  className="rounded-full border border-[#ffc729]/60 bg-[#1d1d1d] p-3 text-[#ffc729] transition hover:bg-[#262626]"
+                  className="icon-bubble rounded-full border border-[#ffc729]/60 bg-[#1d1d1d] p-3 text-[#ffc729] transition hover:bg-[#262626]"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="currentColor">
                     <path d="M13.5 22v-7h2.3l.4-2.9h-2.7V10c0-.8.2-1.4 1.4-1.4H16V6.1c-.4 0-1.1-.1-2-.1-2.1 0-3.5 1.3-3.5 3.7v2.4H8.2V15h2.3v7h3Z"/>
@@ -89,19 +223,27 @@ export default function HomePage() {
                 <a
                   href="tel:+972569810123"
                   aria-label="Call Triple Food"
-                  className="rounded-full border border-[#ffc729]/60 bg-[#1d1d1d] p-3 text-[#ffc729] transition hover:bg-[#262626]"
+                  className="icon-bubble rounded-full border border-[#ffc729]/60 bg-[#1d1d1d] p-3 text-[#ffc729] transition hover:bg-[#262626]"
                 >
                   <MessageCircle className="h-5 w-5" />
                 </a>
               </div>
-              <a
-                href="https://wa.me/972569810123"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-full border border-[#ffc729]/50 bg-[#1a1a1a] px-4 py-2 text-sm font-medium text-[#ffe08a] transition hover:bg-[#232323]"
-              >
-                WhatsApp: +972 56-981-0123
-              </a>
+              <div className="hero-actions flex flex-col items-center gap-3 sm:flex-row">
+                <a
+                  href="https://wa.me/972569810123"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="whatsapp-glow rounded-full border border-[#ffc729]/50 bg-[#1a1a1a] px-5 py-3 text-sm font-medium text-[#ffe08a] transition duration-300 hover:scale-[1.03] hover:border-[#ffd65c] hover:bg-[#232323] hover:shadow-[0_0_30px_rgba(255,199,41,0.35)]"
+                >
+                  WhatsApp: +972 56-981-0123
+                </a>
+                <Link
+                  href="/slideshow"
+                  className="rounded-full border border-[#ffc729]/50 bg-[#1a1a1a] px-5 py-3 text-sm font-medium text-[#ffe08a] transition duration-300 hover:scale-[1.03] hover:border-[#ffd65c] hover:bg-[#232323] hover:shadow-[0_0_24px_rgba(255,199,41,0.22)]"
+                >
+                  View Food Slideshow
+                </Link>
+              </div>
             </div>
           </header>
 
@@ -229,6 +371,163 @@ export default function HomePage() {
           </Link>
         </div>
       </div>
+
+      <style jsx>{`
+        .food-waterfall {
+          isolation: isolate;
+        }
+
+        .food-rain-item {
+          position: absolute;
+          top: -24vh;
+          border-radius: 1.5rem;
+          overflow: hidden;
+          box-shadow: 0 18px 40px rgba(0, 0, 0, 0.32);
+          will-change: transform;
+          animation-name: foodFall;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+        }
+
+        .food-rain-inner {
+          width: 100%;
+          height: 100%;
+          will-change: transform;
+          animation-name: foodDrift;
+          animation-timing-function: ease-in-out;
+          animation-iteration-count: infinite;
+          transform: rotate(var(--food-rotation));
+        }
+
+        .food-rain-inner img {
+          display: block;
+        }
+
+        .hero-shell {
+          animation: heroCardIn 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .hero-title {
+          animation: titleDrop 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .hero-subtitle {
+          animation: fadeUp 900ms 120ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .hero-icons {
+          animation: fadeUp 900ms 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .hero-actions {
+          animation: fadeUp 900ms 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .whatsapp-glow {
+          box-shadow: 0 0 0 rgba(255, 199, 41, 0.15);
+          animation: softPulse 2.8s ease-in-out infinite;
+        }
+
+        .icon-bubble {
+          transition:
+            transform 220ms ease,
+            box-shadow 220ms ease,
+            border-color 220ms ease,
+            color 220ms ease;
+        }
+
+        .icon-bubble:hover {
+          transform: translateY(-2px) scale(1.06) rotate(4deg);
+          box-shadow: 0 0 24px rgba(255, 199, 41, 0.2);
+        }
+
+        @keyframes heroCardIn {
+          from {
+            opacity: 0;
+            transform: translateY(18px) scale(0.985);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @keyframes titleDrop {
+          from {
+            opacity: 0;
+            transform: translateY(-18px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes fadeUp {
+          from {
+            opacity: 0;
+            transform: translateY(18px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes softPulse {
+          0%,
+          100% {
+            box-shadow: 0 0 0 rgba(255, 199, 41, 0.08);
+          }
+          50% {
+            box-shadow: 0 0 28px rgba(255, 199, 41, 0.28);
+          }
+        }
+
+        @keyframes floatSlow {
+          0%,
+          100% {
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+          50% {
+            transform: translate3d(0, -18px, 0) scale(1.04);
+          }
+        }
+
+        @keyframes foodFall {
+          0% {
+            transform: translate3d(0, -26vh, 0);
+          }
+          100% {
+            transform: translate3d(0, 128vh, 0);
+          }
+        }
+
+        @keyframes foodDrift {
+          0%,
+          100% {
+            transform: translate3d(0, 0, 0) rotate(var(--food-rotation));
+          }
+          50% {
+            transform: translate3d(var(--food-drift), 0, 0) rotate(var(--food-rotation-end));
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .hero-shell,
+          .hero-title,
+          .hero-subtitle,
+          .hero-icons,
+          .hero-actions,
+          .whatsapp-glow,
+          .food-rain-item,
+          .food-rain-inner,
+          .icon-bubble {
+            animation: none !important;
+            transition: none !important;
+          }
+        }
+      `}</style>
     </main>
   );
 }

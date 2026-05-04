@@ -5,6 +5,7 @@ interface IImage {
   publicId: string;
   createdAt: Date;
   order?: number;
+  type?: 'menu' | 'slideshow';
 }
 
 export interface IGallery extends Document {
@@ -29,6 +30,11 @@ const ImageSchema = new Schema<IImage>(
     order: {
       type: Number,
       required: false,
+    },
+    type: {
+      type: String,
+      enum: ['menu', 'slideshow'],
+      default: 'menu',
     },
   },
   { _id: false }

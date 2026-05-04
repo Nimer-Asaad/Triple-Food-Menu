@@ -7,12 +7,16 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // Helper: upload buffer to Cloudinary using upload_stream
-function uploadBufferToCloudinary(buffer: Buffer): Promise<{ secure_url: string; public_id: string }> {
+function uploadBufferToCloudinary(
+  buffer: Buffer,
+  galleryType: 'menu' | 'slideshow' = 'menu'
+): Promise<{ secure_url: string; public_id: string }> {
   return new Promise((resolve, reject) => {
+    const folder = galleryType === 'slideshow' ? 'site-gallery/slideshow' : 'site-gallery/menu';
     const stream = cloudinary.uploader.upload_stream(
       {
         resource_type: 'image',
-        folder: 'site-gallery',
+        folder,
       },
       (error, result) => {
         if (error || !result) {
@@ -33,23 +37,27 @@ type GalleryImage = {
   publicId: string;
   createdAt: Date;
   order?: number;
+  type?: 'menu' | 'slideshow';
 };
 
-function sanitizeImages(input: unknown): GalleryImage[] {
+function sanitizeImages(input: unknown, galleryType: 'menu' | 'slideshow' = 'menu'): GalleryImage[] {
   if (!Array.isArray(input)) {
     return [];
   }
 
-  return input.map((item, index) => {
-    const raw = (item ?? {}) as Partial<GalleryImage>;
+  return input
+    .map((item, index) => {
+      const raw = (item ?? {}) as Partial<GalleryImage>;
 
-    return {
-      url: typeof raw.url === 'string' ? raw.url : '',
-      publicId: typeof raw.publicId === 'string' ? raw.publicId : '',
-      createdAt: raw.createdAt ? new Date(raw.createdAt) : new Date(),
-      order: typeof raw.order === 'number' ? raw.order : index,
-    };
-  });
+      return {
+        url: typeof raw.url === 'string' ? raw.url : '',
+        publicId: typeof raw.publicId === 'string' ? raw.publicId : '',
+        createdAt: raw.createdAt ? new Date(raw.createdAt) : new Date(),
+        order: typeof raw.order === 'number' ? raw.order : index,
+        type: (raw.type === 'menu' || raw.type === 'slideshow' ? raw.type : galleryType) as 'menu' | 'slideshow',
+      };
+    })
+    .filter((img) => img.type === galleryType);
 }
 
 function sortImages(images: GalleryImage[]): GalleryImage[] {
@@ -65,27 +73,31 @@ function sortImages(images: GalleryImage[]): GalleryImage[] {
   });
 }
 
-function normalizeOrder(images: GalleryImage[]): GalleryImage[] {
-  return sortImages(sanitizeImages(images)).map((image, index) => ({
+function normalizeOrder(images: GalleryImage[], galleryType: 'menu' | 'slideshow' = 'menu'): GalleryImage[] {
+  return sortImages(sanitizeImages(images, galleryType)).map((image, index) => ({
     ...image,
     order: index,
   }));
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const type = (searchParams.get('type') === 'slideshow' ? 'slideshow' : 'menu') as 'menu' | 'slideshow';
+
     await connectToDatabase();
 
-    let gallery = await SiteGallery.findOne();
-    if (!gallery) {
-      gallery = new SiteGallery({ images: [], updatedAt: new Date() });
-      await gallery.save();
-    }
+    const gallery = await SiteGallery.findOne().lean<{ images?: GalleryImage[] }>();
+    const allImages = gallery?.images ?? [];
+    const typeFilteredImages = allImages.filter((img) => (img.type ?? 'menu') === type);
+    const orderedImages = normalizeOrder(typeFilteredImages, type);
 
-    const orderedImages = normalizeOrder(gallery.images as unknown as GalleryImage[]);
+    console.log('Fetched images:', orderedImages);
+
     return NextResponse.json(
       { success: true, images: orderedImages },
       {
+        status: 200,
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
           Pragma: 'no-cache',
@@ -104,31 +116,35 @@ export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
     const publicId = body?.publicId;
+    const type = (body?.type === 'slideshow' ? 'slideshow' : 'menu') as 'menu' | 'slideshow';
 
     if (!publicId) {
       return NextResponse.json({ success: false, error: 'publicId is required' }, { status: 400 });
     }
 
-    // Ensure Cloudinary is configured (cloudinary.ts also configures, but keep safe here)
     cloudinary.config({
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       api_key: process.env.CLOUDINARY_API_KEY,
       api_secret: process.env.CLOUDINARY_API_SECRET,
     });
 
-    // Delete from Cloudinary
     await cloudinary.uploader.destroy(publicId, { resource_type: 'image' });
 
-    // Update DB
     await connectToDatabase();
     const gallery = (await SiteGallery.findOne()) || new SiteGallery({ images: [], updatedAt: new Date() });
 
-    const remainingImages = (gallery.images as unknown as GalleryImage[]).filter((img) => img.publicId !== publicId);
-    gallery.images = normalizeOrder(remainingImages) as any;
+    const allImages = (gallery.images as unknown as GalleryImage[]) || [];
+    const remainingImages = allImages.filter((img) => img.publicId !== publicId);
+    const updatedImages = normalizeOrder(remainingImages, type).map((img) => ({
+      ...img,
+      type: img.type ?? 'menu',
+    }));
+    gallery.images = updatedImages as any;
     gallery.updatedAt = new Date();
     await gallery.save();
 
-    return NextResponse.json({ success: true, images: normalizeOrder(gallery.images as unknown as GalleryImage[]) });
+    const typeFilteredImages = updatedImages.filter((img) => img.type === type);
+    return NextResponse.json({ success: true, images: typeFilteredImages });
   } catch (error) {
     console.error('Error in /api/gallery DELETE:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -140,8 +156,9 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as unknown as File | null;
+    const typeParam = formData.get('type') as string | null;
+    const type = (typeParam === 'slideshow' ? 'slideshow' : 'menu') as 'menu' | 'slideshow';
 
-    // Validate file-like object
     if (!file || typeof (file as any).arrayBuffer !== 'function') {
       return NextResponse.json({ success: false, error: 'Image file is required' }, { status: 400 });
     }
@@ -149,92 +166,50 @@ export async function POST(request: NextRequest) {
     const bytes = await (file as any).arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Configure Cloudinary from env (ensures values exist at runtime)
     cloudinary.config({
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       api_key: process.env.CLOUDINARY_API_KEY,
       api_secret: process.env.CLOUDINARY_API_SECRET,
     });
 
-    const uploadResult = await uploadBufferToCloudinary(buffer);
+    const uploadResult = await uploadBufferToCloudinary(buffer, type);
 
-    // Connect to MongoDB
     await connectToDatabase();
 
-    // Ensure we have a gallery document
-    let gallery = await SiteGallery.findOne();
-    if (!gallery) {
-      gallery = new SiteGallery({ images: [], updatedAt: new Date() });
-    }
+    const newImage: GalleryImage = {
+      url: uploadResult.secure_url,
+      publicId: uploadResult.public_id,
+      createdAt: new Date(),
+      type,
+    };
 
-    // Insert new image at the end of current order
-    const currentImages = normalizeOrder(gallery.images as unknown as GalleryImage[]);
-    const nextOrder = currentImages.length;
-
-    gallery.images = [
-      ...currentImages,
+    await SiteGallery.updateOne(
+      {},
       {
-        url: uploadResult.secure_url,
-        publicId: uploadResult.public_id,
-        createdAt: new Date(),
-        order: nextOrder,
+        $push: {
+          images: newImage,
+        },
+        $set: {
+          updatedAt: new Date(),
+        },
       },
-    ] as any;
+      { upsert: true }
+    );
 
-    gallery.updatedAt = new Date();
-    await gallery.save();
+    const gallery = await SiteGallery.findOne().lean<{ images?: GalleryImage[] }>();
+    const typeFilteredImages = normalizeOrder(
+      (gallery?.images ?? []).filter((img) => (img.type ?? 'menu') === type),
+      type
+    );
 
-    return NextResponse.json({ success: true, images: normalizeOrder(gallery.images as unknown as GalleryImage[]) }, { status: 201 });
+    console.log('Saved image:', newImage);
+
+    return NextResponse.json(
+      { success: true, images: typeFilteredImages },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error in /api/gallery POST:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
-  }
-}
-
-export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const publicId = body?.publicId as string | undefined;
-    const direction = body?.direction as 'up' | 'down' | undefined;
-
-    if (!publicId || (direction !== 'up' && direction !== 'down')) {
-      return NextResponse.json(
-        { success: false, error: 'publicId and direction (up|down) are required' },
-        { status: 400 }
-      );
-    }
-
-    await connectToDatabase();
-
-    let gallery = await SiteGallery.findOne();
-    if (!gallery) {
-      gallery = new SiteGallery({ images: [], updatedAt: new Date() });
-      await gallery.save();
-    }
-
-    const orderedImages = normalizeOrder(gallery.images as unknown as GalleryImage[]);
-    const currentIndex = orderedImages.findIndex((img) => img.publicId === publicId);
-
-    if (currentIndex === -1) {
-      return NextResponse.json({ success: false, error: 'Image not found' }, { status: 404 });
-    }
-
-    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= orderedImages.length) {
-      return NextResponse.json({ success: true, images: orderedImages });
-    }
-
-    const nextImages = [...orderedImages];
-    [nextImages[currentIndex], nextImages[targetIndex]] = [nextImages[targetIndex], nextImages[currentIndex]];
-
-    gallery.images = normalizeOrder(nextImages) as any;
-    gallery.updatedAt = new Date();
-    await gallery.save();
-
-    return NextResponse.json({ success: true, images: normalizeOrder(gallery.images as unknown as GalleryImage[]) });
-  } catch (error) {
-    console.error('Error in /api/gallery PUT:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
